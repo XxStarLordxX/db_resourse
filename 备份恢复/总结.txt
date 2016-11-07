@@ -1,0 +1,38 @@
+1、备份
+  冷备
+  热备
+2、恢复
+  完全恢复
+  不完全恢复
+3、归档方式
+  非归档
+  归档
+4、数据文件丢失的恢复   
+    非归档
+    归档
+5、非系统表空间的数据文件丢失，没有备份的恢复
+6、数据文件恢复时，改变文件位置
+7、临时表空间的恢复
+    重新创建临时表空间即可
+8、控制文件恢复
+9、日志文件恢复
+10、参数文件恢复
+11、口令文件恢复
+12、常用命令
+  恢复数据库             
+    recover database;
+
+  恢复第n个数据文件   
+    recover datafile n;
+
+  使用备份的控制文件恢复  
+    recover database using backup controlfile;
+
+  基于放弃的恢复         
+    recover database until cancel;
+
+  将数据库恢复到某个时间  
+    recover database until time '2012-08-22 12:40:55';
+
+  将数据库恢复到某个SCN   
+    recover database until change 498573;

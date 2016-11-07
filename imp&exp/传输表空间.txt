@@ -1,0 +1,45 @@
+在orcl库进行
+create tablespace wl datafile '/u01/app/oracle/oradata/orcl/wl01.dbf' size 100M extent management local;
+
+create user u1 identified by oracle default tablespace wl;
+
+grant connect,resource to u1;
+
+create table u1.tab1 tablespace wl as select * from sys.dba_objects;
+
+分别在orcl和prod库进行
+SELECT des.PLATFORM_NAME, ENDIAN_FORMAT FROM V$TRANSPORTABLE_PLATFORM tp,V$DATABASE des WHERE tp.PLATFORM_NAME=des.PLATFORM_NAME;
+
+在orcl库进行
+EXECUTE DBMS_TTS.TRANSPORT_SET_CHECK('wl',true);
+
+SELECT * FROM TRANSPORT_SET_VIOLATIONS;
+
+alter tablespace wl read only;
+
+exp userid=\'/ as sysdba\' tablespaces=wl file=/tmp/wl.dmp transport_tablespace=y
+
+将orcl库的wl表空间的数据文件和导出的DMP文件，传送到目标数据库平台上prod，通过拷贝导出的DMP文件到目标平台：拷贝表空间的数据文件到目标平台：
+
+在prod库操作
+
+创建用户：
+SQL> create user u1 identified by u1;
+
+授予connect,resource角色授予给u1用户：
+SQL> grant connect,resource to u1;
+
+imp userid=\'/ as sysdba\' tablespaces=wl file=/tmp/wl.dmp transport_tablespace=y datafiles=/tmp/wl01.dbf  fromuser=u1 touser=u1
+
+在orcl库操作
+将被导入的表空间设置为可读可写：
+SQL> alter tablespace wl read write;
+
+在prod库操作
+以sys用户登录数据库，查看v$tablespace视图：
+SQL> conn / as sysdba
+SQL> select name from v$tablespace;
+
+以u1用户连接到数据库，查看user_tables视图：
+SQL> conn u1/oracle
+SQL> select table_name from user_tables;

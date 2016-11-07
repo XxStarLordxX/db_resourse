@@ -1,0 +1,53 @@
+说明：数据文件无备份情况下的恢复
+1、前提是非系统表空间
+2、控制文件未被重新创建或恢复到以前的版本(丢失数据文件的描述信息应在数据字典和控制文件中)
+3、数据文件从文件开始到丢失期间的所有日志必须存在
+4、使用下面的命令重建数据文件
+--------------------
+
+
+
+[oracle@opc ~]$ uniread sqlplus / as sysdba
+SQL> shutdown immediate
+SQL> startup mount
+SQL> alter database archivelog;
+SQL> alter database open;
+SQL> archive log list
+SQL> create tablespace test datafile '/u01/app/oracle/oradata/orcl/test.dbf' size 10m;
+sql>CREATE USER test IDENTIFIED BY test DEFAULT TABLESPACE test TEMPORARY TABLESPACE temp QUOTA 10M ON test;
+sql>grant CONNECT,RESOURCE to test;
+sql>conn test/test
+SQL> create table t01(id int);
+insert into t01 values(1);
+insert into t01 values(2);
+insert into t01 values(3);
+SQL> commit;
+[oracle@opc ~]$ rm -rf /u01/app/oracle/oradata/orcl/test.dbf 
+SQL> alter system flush buffer_cache;
+SQL> select  * from test.t01;
+select	* from test.t01
+                    *
+ERROR at line 1:
+ORA-01116: error in opening database file 6
+ORA-01110: data file 6: '/u01/app/oracle/oradata/orcl/test.dbf'
+ORA-27041: unable to open file
+Linux-x86_64 Error: 2: No such file or directory
+Additional information: 3
+
+查看需要恢复的文件,需要SQL> startup force后才能查看
+SQL> select file#,error from v$recover_file;
+恢复数据文件
+SQL> alter database datafile 6 offline;
+
+由于没做备份，所以不能做还原（resotre），但控制文件中记录了刚才创建的表空间的信息，所以先创建一个原来的数据文件，然后再来恢复。
+SQL> alter database create datafile  '/u01/app/oracle/oradata/orcl/test.dbf';
+SQL> recover datafile 6;
+SQL> alter database datafile 6 online;
+验证
+SQL> select*from test.t01;
+	ID
+----------
+	 1
+	 2
+	 3
+数据恢复

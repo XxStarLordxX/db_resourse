@@ -1,0 +1,91 @@
+数据泵导出实例
+使用empd可以导出整个数据库、单个模式、特定的表或特定的表空间。
+1、导出整个数据库，我们使用system用户登录数据库，限制备份的数据文件大小为230M，一旦备份数据文件满，则自动创建一个新的备份文件，使用%U来实现备份文件的自动创建，nologfile=y即不记录备份过程。
+[oracle@oracle Desktop]$ expdp system/oracle dumpfile=pump_dir:mydb_%U.dat filesize=230M nologfile=y job_name=tom full=y
+2、导出一个模式
+导出scott模式，在例子中没有schema参数，但是默认导出登录数据库时的模式对象。
+[oracle@oracle Desktop]$ expdp scott/scott dumpfile=scott_dump_dir:scottschema.dmp logfile=scott_dump_dir:scottschema.log
+或
+[oracle@oracle Desktop]$ expdp scott/scott directory= scott_dump_dir dumpfile=scottschema.dmp logfile=scott_dump_dir:scottschema.log schemas=scott
+3、导出特定的表，使用tables参数指定导入的表的列表，如果该表不属于登录的用户，但是登录用户有访问这些表的权限，则tables参数的表必须使用schema.tablename的方式。
+[oracle@oracle Desktop]$ expdp system/oracle dumpfile=pump_dir:scott_tables_%U.dat tables=scott.emp,scott.dept nologfile=y job_name=only_scott
+4、导出表空间
+导出表空间使用tablespaces参数，如果有多个表空间需要导出，表空间名使用逗号隔开，使用parallel参数指定数据导出并行线程数量，与之对应使用替换变量%U来创建相应数量的备份数据文件，这样每个线程可以独立写一个备份数据文件，提高导出速度。
+[oracle@oracle Desktop]$ expdp system/oracle dumpfile=pump_dir:users_tbs_%U.dmp tablespaces=users filesize=230M parallel=2 logfile=users_tbs.log job_name=exp_users_tbs
+5、导出数据
+使用content参数，可以指定导出表数据和元数据(应用参数all)，导出表行数据（对应参数data_only）或只导出元数据即表以及其他数据库对象的定义（对应参数metadata_only）
+[oracle@oracle Desktop]$ expdp system/oracle dumpfile=pump_dir:mydb_dataony_%U.dat filesize=230M job_name=larry full=y content=data_only logfile=pump_dir:mydb_exp_dataonly.log
+6、使用参数文件
+在使用expdp导出数据时，由于参数很多导致每次执行备份都输入一大串指令，这样不但繁琐且不易修改，数据泵技术允许使用参数文件，用户在参数文件中创建各种参数，保存该文件paraname.par文件，然后再执行导出时使用parfile指定参数文件的位置执行导出备份。
+[oracle@oracle ~]$ vi paraname.par
+directory=pump_dir
+dumpfile=para_data_only_%U.dmp
+content=data_only
+exclude=table:"in('salgrade','bonus')"
+logfile=para_data_only.log
+filesize=50M
+parallel=2
+job_name=para_data_only
+[oracle@oracle ~]$ expdp scott/scott parfile=/home/oracle/paraname.par
+7、估计空间导出文件的空间大小
+estimate_only计算导出数据所需要的存储空间，在导出的数据大小不清楚时，事先知道备份文件的大小，可以提前分配磁盘空间，防止由于磁盘空间不足引起的expdp导出作业停止。
+[oracle@oracle ~]$ expdp system/oracle full=y estimate_only=y estimate=statistics nologfile=y
+使用STATISTICS方法计算system用户所有数据库对象的大小。最后给出一个总的估计结果。
+
+
+
+
+数据泵导入实例
+使用数据泵导入impdp可以导入基于使用数据泵导出的备份文件，可以导入整个数据库，指定的表空间，指定的表或指定的数据库对象类型，如索引、函数、存储过程和触发器等。
+1、 导入整个数据库
+导入整个数据库至少需要二个参数，一个是full,设置full=y说明是导入全库，一个是dumpfile，说明要导入的备份文件的目录和名称，job_name参数，允许切换到交换模式，允许终止或重启导入会话
+[oracle@oracle oracle]$ mkdir /u01/app/oracle/wl/
+[oracle@oracle ~]$ sqlplus / as sysdba
+SQL> startup
+SQL> create directory pump_dir as '/u01/app/oracle/wl';
+SQL> select * from dba_directories where directory_name='PUMP_DIR';
+导出：
+[oracle@oracle Desktop]$ expdp system/oracle dumpfile=pump_dir:full_db_%U.dat filesize=230M nologfile=y job_name=tom full=y
+SQL> drop user scott cascade;
+导入：
+[oracle@oracle Desktop]$ impdp system/oracle dumpfile=pump_dir:full_db_%U.dat logfile= pump_dir:myfulldb.log parallel=3 job_name=my_fulldb_impdp full=y
+2、 导入表空间
+使用impdp导入特定的表空间时，需要有备份表空间文件，需要使用tablespaces参数说明要导入的表空间名，此时实际上是导入表空间中的所有数据库对象，由于表空间中有表对象，需要使用table_exits_action来告诉impdp怎么做，可以使用replace重建表，truncate删除当前表中的数据，然后使用备份文件中的表数据进行加载，但会跳过所有相关元数据。
+[oracle@oracle Desktop]$ expdp system/oracle dumpfile=pump_dir:users_tbs_%U.dmp tablespaces=users filesize=230M parallel=2 logfile=users_tbs.log job_name=exp_users_tbs
+SQL> drop table scott.emp;
+SQL> drop table scott.dept;
+[oracle@oracle Desktop]$ impdp system/oracle dumpfile=pump_dir:users_tbs_%U.dmp logfile= pump_dir:users.log tablespaces=users table_exists_action=replace
+3、 导入指定的表
+使用impdp导入特定的表使用tables参数，该参数的后，是要导入表的对象列表，如果有多个表，使用逗号分隔。
+[oracle@oracle Desktop]$ expdp system/oracle dumpfile=pump_dir:scott_tables_%U.dat tables=scott.emp,scott.dept nologfile=y job_name=only_scott
+SQL> drop table scott.emp;
+SQL> grant read,write on directory pump_dir to scott;
+[oracle@oracle Desktop]$ impdp scott/scott dumpfile=pump_dir:scott_tables_%U.dat nologfile=y tables=emp table_exists_action=replace
+如将表dept,emp 导入到scott 方案中
+impdp scott/tiger directory=dump_scott dumpfile=tab.dmp tables=dept,emp
+如将表dept 和emp 从scott 方案导入到system 方案中，对于方案的转移，必须使
+用remap_shcema 参数
+impdp system/manage directory=dump_scott dumpfile=tab.dmp
+tables=scott.dept,scott.emp remap_schema=scott:system
+4、 导入指定的数据库对象
+导入指定的数据库对象使用include参数，恢复scott用户的所有表和触发器对象，对于已存在的表则重新加载数据
+[oracle@oracle wl]$ expdp system/oracle dumpfile=pump_dir:full_db_%U.dat filesize=230M nologfile=y job_name=tom full=y
+[oracle@oracle wl]$ impdp scott/scott dumpfile=pump_dir:full_db_%U.dat nologfile=y include=table,trigger table_exists_action=replace
+导入方案
+如将dump_scott 目录下的schema.dmp 导入到scott 方案中
+impdp scott/tiger directory=dump_scott dumpfile=schema.dmp schemas=scott如将scott 方案中的所有对象转移到system 方案中
+impdp system/redhat directory=dump_scott dumpfile=schema.dmp schemas=scott remap_schema=scott:system
+
+
+
+
+
+
+
+
+
+
+
+
+
+

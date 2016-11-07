@@ -1,0 +1,182 @@
+一、创建闪回数据归档
+1、为了创建闪回数据归档，必须拥有DBA角色或拥有系统权限flashback archive administer。
+sys@orcl> select * from dba_sys_privs where privilege like '%FLASH%';
+
+创建表空间
+sys@orcl> create tablespace flash_tbs1 datafile '/u01/app/oracle/oradata/orcl/flash_tbs1.dbf' size 200M;
+
+sys@orcl> create tablespace tp1 datafile '/u01/app/oracle/oradata/orcl/tp1.dbf' size 200M;
+
+sys@orcl> CREATE USER wl IDENTIFIED BY wl DEFAULT TABLESPACE flash_tbs1 TEMPORARY TABLESPACE temp;
+
+sys@orcl> grant  CONNECT,RESOURCE ,flashback archive administer to wl;
+
+2、创建闪回归档
+sys@orcl> create flashback archive flash1 tablespace flash_tbs1  quota 100M retention 5 year;
+
+sys@orcl> CREATE FLASHBACK ARCHIVE DEFAULT fla2 TABLESPACE tp1 QUOTA 10G RETENTION 2 YEAR;
+
+二、更改闪回数据归档
+sys@orcl> alter flashback archive flash1 set default;
+
+添加表空间
+SQL> col FLASHBACK_ARCHIVE_NAME format a25
+
+SQL> select FLASHBACK_ARCHIVE_NAME,STATUS from dba_FLASHBACK_ARCHIVE;
+
+sys@orcl> alter flashback archive flash1 add tablespace tp1; 
+
+SQL>select TABLESPACE_NAME,FLASHBACK_ARCHIVE_NAME from dba_FLASHBACK_ARCHIVE_TS;
+
+
+删除表空间
+sys@orcl> alter flashback archive flash1 remove tablespace tp1;
+SQL>select TABLESPACE_NAME,FLASHBACK_ARCHIVE_NAME from dba_FLASHBACK_ARCHIVE_TS;
+
+添加配额
+
+SQL> select TABLESPACE_NAME,FLASHBACK_ARCHIVE_NAME,QUOTA_IN_MB from dba_FLASHBACK_ARCHIVE_TS;
+
+sys@orcl> alter flashback archive flash1 modify tablespace flash_tbs1 quota 150M;
+
+SQL> select TABLESPACE_NAME,FLASHBACK_ARCHIVE_NAME,QUOTA_IN_MB from dba_FLASHBACK_ARCHIVE_TS;
+
+SQL> select FLASHBACK_ARCHIVE_NAME,RETENTION_IN_DAYS from dba_FLASHBACK_ARCHIVE;
+
+sys@orcl> alter flashback archive flash1 modify retention 3 year; 
+
+SQL> select FLASHBACK_ARCHIVE_NAME,RETENTION_IN_DAYS from dba_FLASHBACK_ARCHIVE;
+
+清除所有
+sys@orcl> alter flashback archive flash1 purge all;
+
+清除2天前的
+sys@orcl> alter flashback archive flash1 purge before timestamp (systimestamp-interval '2' day);
+
+sys@orcl> alter flashback archive flash1 purge before scn 123344;
+
+三、启用和禁用闪回数据归档
+sys@orcl> conn wl/wl
+
+1、在建表的同时就启用表的闪回日志
+wl@orcl> create table t1(id int,name varchar2(10)) flashback archive flash1;
+
+2、建表后，启用表的闪回日志
+为表启用闪回数据归档,没指定表示使用数据库默认的
+create table t2(id int,name varchar2(10));
+alter table t2 flashback archive;
+
+为表启用闪回数据归档,指定在特定的闪回数据归档中存储表的变化
+create table t3(id int,name varchar2(10));
+alter table t3 flashback archive fla2; 
+
+3、数据库将把T1表的数据,归档到默认的闪回数据归档中
+wl@orcl> select * from dba_flashback_archive_tables;
+
+4、在使用闪回数据归档前，必须设置默认闪回数据归档
+wl@orcl> select flashback_archive_name,status from dba_flashback_archive;
+
+5、禁用闪回数据归档
+wl@orcl> alter table t1 no flashback archive;
+
+alter table t1 flashback archive;
+
+四、闪回数据归档的限制
+使用闪回归档的过程中有某些限制。对于已经启用闪回的表，不能使用DDL命令drop column（11r2可以drop column）,可以add column命令。
+wl@orcl> select * from v$version; 
+
+11G R2版可以删除列
+wl@orcl> alter table t1 drop column name; 
+
+可以增加列
+wl@orcl> alter table t1 add(name varchar2(100)); 
+
+可以重命名表
+wl@orcl> alter table t1 rename to t10;
+
+可以截断表
+wl@orcl> truncate table t10;
+
+不可以删除表
+wl@orcl> drop table t10;
+ drop table t10
+            *
+ ERROR at line 1:
+ ORA-55610: Invalid DDL statement on history-tracked table
+
+wl@orcl> alter table t10 no flashback archive;
+
+禁用后可以删除表
+wl@orcl> drop table t10;
+
+五、监控闪回数据归档
+1、查哪些表已经启用了闪回数据归档
+wl@orcl> select * from dba_flashback_archive_tables; 
+
+2、查数据库中所有的闪回数据归档
+wl@orcl> select flashback_archive_name,retention_in_days from dba_flashback_archive;
+
+3、查有关闪回数据归档所使用的表空间的信息
+wl@orcl>select flashback_archive_name,tablespace_name,quota_in_mb from dba_flashback_archive_ts;
+
+
+六、使用闪回数据归档(实例)
+
+sys@orcl> create tablespace flash_tbs2 datafile '/u01/app/oracle/oradata/orcl/flash_tbs2.dbf' size 200M;
+
+
+sys@orcl> CREATE USER w2 IDENTIFIED BY w2 DEFAULT TABLESPACE flash_tbs2 TEMPORARY TABLESPACE temp;
+
+sys@orcl> grant  CONNECT,RESOURCE ,flashback archive administer to w2;
+
+sys@orcl> create flashback archive flash2 tablespace flash_tbs2  quota 100M retention 5 year;
+
+sys@orcl>conn  w2/w2
+
+w2@orcl> create table test_wl(id int,name varchar2(10));
+
+w2@orcl> alter table test_wl flashback archive flash2;
+
+w2@orcl> begin for i in 1 .. 100 loop insert into test_wl values(i,'wl'||i); commit; end loop; end; 
+/
+
+w2@orcl> select count(*) from test_wl;
+
+w2@orcl> col FLASHBACK_ARCHIVE_NAME for a10
+w2@orcl> col TABLE_NAME for a10
+w2@orcl> col ARCHIVE_TABLE_NAME for a20
+w2@orcl> col OWNER_NAME for a5
+
+w2@orcl> select * from dba_flashback_archive_tables;
+TABLE_NAME  OWNER   FLASHBACK_   ARCHIVE_TABLE_NAME	 STATUS
+--------------------  -----------   --------------------   ----------------------------------    -------------
+TEST_WL      W2	       FLASH1         SYS_FBA_HIST_88644	     ENABLED
+
+W2@orcl> conn / as sysdba
+
+sys@orcl> select current_scn from v$database;
+CURRENT_SCN
+----------------------- 
+           1050526
+sys@orcl>conn w2/w2
+
+w2@orcl> delete from test_wl; 
+
+w2@orcl> commit; 
+
+w2@orcl> conn / as sysdba
+
+sys@orcl> select current_scn from v$database;
+CURRENT_SCN
+----------------------- 
+           1050633
+sys@orcl>conn w2/w2
+
+w2@orcl> select count(*) from test_wl as of scn  1050526; 
+
+w2@orcl> select count(*) from test_wl as of scn  1050633;
+
+INSERT INTO test_wl SELECT * FROM test_wl AS OF scn 1014253;
+七、删除闪回归档数据
+SQL> conn / as sysdba
+drop flashback archive flash2;

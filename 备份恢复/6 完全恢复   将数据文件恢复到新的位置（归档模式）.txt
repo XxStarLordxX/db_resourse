@@ -1,0 +1,67 @@
+[oracle@opc ~]$ uniread sqlplus / as sysdba
+SQL> shutdown immediate
+SQL> startup mount
+SQL> alter database archivelog;
+SQL> alter database open;
+SQL> archive log list
+SQL> create tablespace test datafile '/u01/app/oracle/oradata/orcl/test.dbf' size 10m;
+sql>CREATE USER test IDENTIFIED BY test DEFAULT TABLESPACE test TEMPORARY TABLESPACE temp QUOTA 10M ON test;
+sql>grant CONNECT,RESOURCE to test;
+sql>conn test/test
+SQL> create table t01(id int);
+SQL> insert into t01 values(1);
+SQL> insert into t01 values(2);
+SQL> insert into t01 values(3);
+SQL> commit;
+
+conn / as sysdba
+alter tablespace test begin backup;
+cp /u01/app/oracle/oradata/orcl/test.dbf /u01/app/oracle
+alter tablespace test end backup;
+
+sql>conn test/test
+SQL> insert into t01 values(4);
+SQL> insert into t01 values(5);
+SQL> insert into t01 values(6);
+SQL> commit;
+SQL> conn / as sysdba
+SQL> shutdown immediate
+[oracle@opc ~]$ rm -rf /u01/app/oracle/oradata/orcl/test.dbf 
+SQL> startup
+查看所要恢复的文件信息
+SQL> select file#,error from v$recover_file;
+将失败的介质offline并还原到新位置
+SQL> alter database datafile 6 offline;
+SQL> alter database open;（高可用性）
+[oracle@opc bakup]$ cp /u01/app/oracle/test.dbf /u01/app/oracle/oradata/
+SQL> select name from v$datafile;
+
+将控制文件中的数据文件名重命名
+SQL> alter database rename file '/u01/app/oracle/oradata/orcl/test.dbf' to '/u01/app/oracle/oradata/test.dbf';
+恢复数据文件
+SQL> recover datafile 6;
+将被offline的数据文件online
+SQL> alter database datafile 6 online;
+验证
+SQL> select* from test.t01;
+	ID
+----------
+	 1
+	 2
+	 3
+	 4
+	 5
+	 6
+
+
+
+
+
+
+
+
+
+
+
+
+

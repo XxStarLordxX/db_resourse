@@ -1,0 +1,42 @@
+SQL> shutdown immediate
+SQL> startup mount;
+SQL> alter database archivelog;
+SQL> alter database open;
+SQL> select log_mode from v$database;
+sql>CREATE USER test IDENTIFIED BY test DEFAULT TABLESPACE users TEMPORARY TABLESPACE temp QUOTA 10M ON users;
+sql>grant CONNECT,RESOURCE to test;
+在session1中开始system表空间的热备模式
+SQL> alter tablespace system begin backup;
+
+在session2中创建表test1
+conn test/test
+SQL> create table test1 tablespace users as select * from user_segments;
+在session1中进行热备到指定路径
+SQL> ho mkdir $ORACLE_BASE/hotbak/
+SQL> ho cp $ORACLE_BASE/oradata/orcl/system01.dbf $ORACLE_BASE/hotbak/
+
+
+在session2中清空刚刚创建的tb_seg表
+SQL> delete from test1;
+SQL> commit;
+
+在session1中关闭热备模式，并删除system01.dbf
+SQL> alter tablespace system end backup;
+SQL> ho rm $ORACLE_BASE/oradata/orcl/system01.dbf
+
+在session2中继续会话并执行下列操作
+SQL> insert into test1 select * from user_segments where rownum<6;
+SQL> commit;
+SQL> select count(*) from test1;
+
+强制启动数据
+SQL> startup force;
+还原system表空间的数据文件
+SQL> ho cp $ORACLE_BASE/hotbak/system01.dbf $ORACLE_BASE/oradata/orcl/
+执行介质恢复
+SQL> recover datafile 1;
+SQL> alter database open ;
+验证恢复，表test1的数据正确
+SQL> select count(1) from test1;
+
+

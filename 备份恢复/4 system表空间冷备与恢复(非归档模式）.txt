@@ -1,0 +1,49 @@
+查看归档模式
+SQL> select log_mode from v$database;
+数据库关闭后备份system01.dbf文件
+SQL> shutdown immediate;
+SQL> ho mkdir $ORACLE_BASE/coolbakup/
+SQL> ho cp $ORACLE_BASE/oradata/orcl/system01.dbf $ORACLE_BASE/coolbakup/
+SQL> startup
+非系统表空间创建表test
+SQL> create table test tablespace users as select * from scott.emp;
+SQL> select count(*) from test;
+日志切换,直到日志组被清空
+SQL> alter system switch logfile;
+删除system01.dbf
+SQL> ho rm $ORACLE_BASE/oradata/orcl/system01.dbf
+强制启动后出错
+SQL> startup force;
+还原system表空间的数据文件
+SQL> ho cp $ORACLE_BASE/coolbakup/system01.dbf $ORACLE_BASE/oradata/orcl/
+基于放弃的恢复system01.dbf，恢复到我们输入cancel命令为止，通常用于丢失联机重做日志文件或归档日志文件，当恢复到丢失的日志文件的时候，只能输入cancel命令，表示恢复到此为止。
+SQL> recover database until cancel;
+输入cancel
+启用隐藏参数_allow_resetlogs_corruption
+SQL> alter system set "_allow_resetlogs_corruption" = true scope = spfile;
+SQL> startup force;
+使用resetlogs打开数据库时系统异常终止
+SQL> alter database open resetlogs;
+重新登录后可以正常启动
+[oracle@opc ~]$ sqlplus / as sysdba
+SQL> startup
+关闭隐藏参数_allow_resetlogs_corruption
+SQL> alter system reset "_allow_resetlogs_corruption" scope =spfile sid ='*';
+提交的事务因日志被清空，数据丢失
+SQL> select count(1) from tb;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

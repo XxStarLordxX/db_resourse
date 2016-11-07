@@ -1,0 +1,40 @@
+修改数据库结构后丢失所有控制文件 
+SYS@orcl> alter database backup controlfile to '/u01/app/oracle/control01.ctl'; 
+
+SYS@orcl> create tablespace t1 datafile '/u01/app/oracle/oradata/orcl/t1.dbf' size 10m; 
+
+SYS@orcl> create table a(id number) tablespace t1; 
+
+SYS@orcl> ho rm -rf /u01/app/oracle/oradata/orcl/*.ctl 
+
+SYS@orcl> startup force; 
+
+SYS@orcl> show parameter control_files 
+
+SYS@orcl> ho cp /u01/app/oracle/control01.ctl /u01/app/oracle/oradata/orcl/control01.ctl 
+
+SYS@orcl> ho cp /u01/app/oracle/control01.ctl /u01/app/oracle/oradata/orcl/control02.ctl 
+
+SYS@orcl> ho cp /u01/app/oracle/control01.ctl /u01/app/oracle/oradata/orcl/control03.ctl 
+
+SYS@orcl> alter database mount; 
+
+SYS@orcl> alter database open; 
+
+SYS@orcl> alter database open resetlogs; 
+
+使用备份的控制文件进行恢复 
+
+SYS@orcl> recover database using backup controlfile; 
+
+应用当前日志 
+
+SYS@orcl> select name from v$datafile; 
+
+SYS@orcl> alter database create datafile '/u01/app/oracle/product/10.2.0/db_1/dbs/UNNAMED00006' as '/u01/app/oracle/oradata/orcl/t1.dbf'; 
+
+SYS@orcl> recover database using backup controlfile; 
+
+SYS@orcl> alter database open resetlogs; 
+
+SYS@orcl> select * from a;

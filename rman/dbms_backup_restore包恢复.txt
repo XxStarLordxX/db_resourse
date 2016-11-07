@@ -1,0 +1,102 @@
+备份
+
+[oracle@wl ~]$ rm /u01/app/oracle/oradata/orcl/*.dbf
+[oracle@wl ~]$ rm /u01/app/oracle/fast_recovery_area/orcl/control02.ctl 
+[oracle@wl ~]$ rm /u01/app/oracle/product/11.2.0/db_1/dbs/spfileorcl.ora 
+[oracle@wl ~]$ rm /u01/app/oracle/product/11.2.0/db_1/dbs/orapworcl
+
+orapwd file=orapworcl password=oracle
+
+[oracle@wl dbs]$ cp init.ora init.ora.bak
+vi /u01/app/oracle/product/11.2.0/db_1/dbs/init.ora
+内容如下：
+db_name='ORCL'
+processes = 150
+audit_trail ='db'
+db_block_size=8192
+db_domain=''
+dispatchers='(PROTOCOL=TCP) (SERVICE=ORCLXDB)'
+remote_login_passwordfile='EXCLUSIVE'
+
+[oracle@wl dbs]$ sqlplus / as sysdba
+startup pfile='/u01/app/oracle/product/11.2.0/db_1/dbs/init.ora';
+
+在sql提示符下执行
+DECLARE
+DEVTYPE VARCHAR2(256);
+DONE BOOLEAN;
+BEGIN
+DEVTYPE:=DBMS_BACKUP_RESTORE.deviceallocate(NULL);
+sys.DBMS_BACKUP_RESTORE.restoresetdatafile;
+sys.DBMS_BACKUP_RESTORE.restorespfileto('/u01/app/oracle/product/11.2.0/db_1/dbs/initorcl.ora');
+sys.DBMS_BACKUP_RESTORE.restorebackuppiece('/u01/app/oracle/fast_recovery_area/ORCL/backupset/2014_03_30/o1_mf_ncsnf_TAG20140330T063741_9mgltt0s_.bkp',DONE=>done);
+sys.DBMS_BACKUP_RESTORE.devicedeallocate(NULL);
+END;
+/
+
+SYS@orcl> shutdown immediate
+
+
+[oracle@wl dbs]$ rm init.ora
+[oracle@wl dbs]$ mv init.ora.bak init.ora
+
+[oracle@wl dbs]$ sqlplus / as sysdba
+
+SYS@orcl> startup nomount;
+
+
+恢复控制文件
+DECLARE
+DEVTYPE VARCHAR2(256);
+DONE BOOLEAN;
+BEGIN
+DEVTYPE:=DBMS_BACKUP_RESTORE.deviceallocate(NULL);
+DBMS_BACKUP_RESTORE.restoresetdatafile;
+DBMS_BACKUP_RESTORE.restorecontrolfileto('/u01/app/oracle/oradata/orcl/control01.ctl');
+DBMS_BACKUP_RESTORE.restorebackuppiece('/u01/app/oracle/fast_recovery_area/ORCL/backupset/2014_03_30/o1_mf_ncsnf_TAG20140330T063741_9mgltt0s_.bkp',DONE=>done);
+DBMS_BACKUP_RESTORE.devicedeallocate(NULL);
+END;
+/
+
+[oracle@wl dbs]$ cp /u01/app/oracle/oradata/orcl/control01.ctl /u01/app/oracle/fast_recovery_area/orcl/control02.ctl
+
+使用dbms_backup_restore包恢复数据文件。
+SQL> declare
+devtype varchar2(256);
+done boolean;
+begin
+devtype:=sys.dbms_backup_restore.deviceallocate(type=>'',ident=>'t1');
+sys.dbms_backup_restore.restoresetdatafile;
+sys.dbms_backup_restore.restoredatafileto(dfnumber=>01,toname=>'/u01/app/oracle/oradata/orcl/system01.dbf');
+sys.dbms_backup_restore.restoredatafileto(dfnumber=>03,toname=>'/u01/app/oracle/oradata/orcl/undotbs01.dbf');
+sys.dbms_backup_restore.restoredatafileto(dfnumber=>02,toname=>'/u01/app/oracle/oradata/orcl/sysaux01.dbf');
+sys.dbms_backup_restore.restoredatafileto(dfnumber=>04,toname=>'/u01/app/oracle/oradata/orcl/users01.dbf');
+sys.dbms_backup_restore.restoredatafileto(dfnumber=>05,toname=>'/u01/app/oracle/oradata/orcl/example01.dbf');
+sys.dbms_backup_restore.restorebackuppiece(done=>done,handle=>'/u01/app/oracle/fast_recovery_area/ORCL/backupset/2014_03_30/o1_mf_nnndf_TAG20140330T063741_9mglsotx_.bkp',params=>null);
+sys.dbms_backup_restore.devicedeallocate;
+end;	
+/
+
+使用dbms_backup_restore包恢复归档日志(mount)
+SQL> declare
+devtype varchar2(256);
+done boolean;
+begin
+devtype:=sys.dbms_backup_restore.deviceallocate(type=>'',ident=>'t1');
+sys.dbms_backup_restore.restoresetarchivedlog(destination=>'/u01/app/oracle/fast_recovery_area/ORCL/archivelog/2014_03_30/');
+sys.dbms_backup_restore.restorearchivedlog(thread=>1,sequence=>6);
+sys.dbms_backup_restore.restorebackuppiece(done=>done,handle=>'/u01/app/oracle/fast_recovery_area/ORCL/backupset/2014_03_30/o1_mf_annnn_TAG20140330T063927_9mglwzv3_.bkp',params=>null);
+sys.dbms_backup_restore.devicedeallocate;
+end;
+/
+
+
+SYS@orcl> alter database mount;
+
+使用controlfile恢复数据库，resetlogs方式打开数据库
+SQL> recover database using backup controlfile until cancel;
+
+SQL> alter database open resetlogs;
+
+
+

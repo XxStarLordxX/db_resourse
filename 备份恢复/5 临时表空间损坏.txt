@@ -1,0 +1,4 @@
+create temporary tablespace temp2 tempfile '/home/oracle/temp02.dbf' size 50M;
+alter database default temporary tablespace temp2;
+select * from database_properties;
+drop tablespace temp including contents and datafiles;

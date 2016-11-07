@@ -1,0 +1,188 @@
+Oracle 的闪回技术是一种数据恢复技术，仅能对用户逻辑错误进行恢复
+---------------------------------------------------------------
+一、Flashback Version Query
+所谓版本指的是每次事务所引起的数据行的变化情况，每一次变化就是一个版本。
+使用undo 表空间的undo 数据，如果undo数据清除，不能Flashback Version Query
+
+语法：
+基于SCN 的版本查询
+SELECT <columns>
+FROM <schema_name.table_name>
+VERSIONS BETWEEN SCN <minimum_scn> AND <maximum_scn>
+[WHERE <column_filter>]
+[GROUP BY <non-aggregated_columns>]
+[HAVING <group filter>
+[ORDER BY <position_numbers_or_column_names>]
+基于TIMESTAMP 的版本查询
+SELECT <columns>
+FROM <schema_name.table_name>
+VERSIONS BETWEEN timestamp to_timestamp('start_timestamp') and to_timestamp('end_timestamp')
+[WHERE <column_filter>]
+[GROUP BY <non-aggregated_columns>]
+[HAVING <group filter>
+[ORDER BY <position_numbers_or_column_names>]
+
+结合伪列：
+VERSIONS_OPERATION
+其中，I 表示insert，D 表示delete，U 表示update。
+VERSIONS_XID 该操作的事务ID
+
+作用：用于审计查询
+---------------------------------------------------------------
+二、Flashback Transaction Query
+闪回事务查询：对过去某段时间内所完成事务的查询和撤销
+使用undo 表空间的undo 数据，如果undo数据清除，不能Flashback Transaction Query
+
+开启附加日志：
+alter database add supplemental log data;
+
+闪回事务查询通过查询视图flashback_transaction_query 中undo_sql 列的语句来获得反转语句。
+
+作用：事务的闪回恢复
+----------------------------------------------------------------
+三、Flashback query
+闪回查询是查询该表过去某个时刻的数据情况
+使用undo 表空间的undo 数据，如果undo数据清除，不能Flashback query
+
+语法：
+1、使用as of scn
+SELECT <column_name_list>
+FROM <table_name>
+AS OF <SCN>
+
+2、使用as of timestamp
+SELECT <column_name_list>
+FROM <table_name>
+AS OF <TIMESTAMP>
+
+作用：闪回查询（查询历史数据），也可以结合insert语句做闪回恢复
+-------------------------------------------------------
+四、Flashback Table
+闪回表就是将表里的数据回退到历史上的某个时间点
+使用undo 表空间的undo 数据，如果undo数据清除，不能Flashback table
+
+语法：
+基于SCN 的表闪回
+FLASHBACK TABLE <schema_name.table_name> TO SCN <scn_number> [<ENABLE | DISABLE> TRIGGERS]
+基于TIMESTAMP 的表闪回
+FLASHBACK TABLE <schema_name.table_name> TO TIMESTAMP <timestamp> [<ENABLE | DISABLE> TRIGGERS]
+基于RESTORE POINT 的表闪回
+FLASHBACK TABLE <schema_name.table_name> TO RESTORE POINT <restore_point> [<ENABLE | DISABLE>
+TRIGGERS]
+
+注意：
+不能对系统表做闪回操作，SYS 用户不支持闪回；
+执行DDL操作后不能闪回
+在执行Flashback Table前，必须开启表的行移动
+alter table 表名称 enable row movement;
+
+如果表之间有主外键，指定二个表同时进行闪回恢复，表1和表2的数据同时闪回成功，同时闪回不成功，如：
+flashback table 表1,表2 to scn 497543;
+
+作用：闪回恢复
+--------------------------------------------
+五、Flashback Drop
+闪回删除，恢复被意外删除表等数据库对象的闪回
+闪回删除使用回收站进行闪回操作，如果回收站被清除，则不能进行Flashback Drop的操作
+
+原理
+drop table--->表不会从数据库中立即删除---->表仍然保存在原来的位置，表中的数据也没有删除------>将表名（原来表名）重新命名（回收站中的对象名称）后放入到回收站里----->当drop table表时，相当于以表进行重新命名的操作
+
+回收站什么时候会被清除
+1、回收站是一个逻辑的区域，当表空间的空间不足时，会覆盖回收站的空间
+2、drop table 表名 purge;  此操作没有将删除的表放入回收站
+3、关闭回收站
+alter system set recyclebin = on | off;
+alter session set recyclebin = on | off;
+4、清空回收站
+  1、使用PURGE TABLE original_table_name; 这里的original_table_name 表示未drop以前的名称
+   2、使用PURGE TABLE recyclebin_object_name; 这里的recyclebin_object_name 表示回收站中的对象名称
+   3、使用PURGE TABLESPACE tablespace_name 从指定的表空间中清除所有的丢弃对象
+   4、使用PURGE TABLESPACE tablespace_name USER user_name 从回收站中清除属于某个特定用户的所有丢弃对象。
+   5、DROP USER user_name cascade 直接删除指定用户及其所属的全部对象，也就是说，DROP USER 命令会绕过回收站进行直接删除。
+   6、使用PURGE RECYCLEBIN 命令清除用户自己的回收站
+   7、PURGE DBA_RECYCLEBIN 从所有用户的回收站清除所有对象作用：drop表后的闪回恢复
+
+语法：
+flashback table  表名 to before drop;
+
+注意：
+存放在SYSTEM 表空间上的表不能进行Flashback Drop
+flashback drop 不能闪回truncate 命令截断的表，只能恢复drop 之后的表。
+flashback drop 不能闪回drop user scott cascade 删除方案的操作,此只能用
+flashback database
+
+作用:drop table的闪回恢复
+--------------------------------------------------
+六、Flashback Database
+闪回数据库可以实现数据库逻辑恢复
+闪回数据库使用闪回日志来实现，当闪回日志被清除后，不能实现Flashback Database
+当闪回恢复区的空间不足时，会使用闪回日志的区域
+
+闪回日志怎么来的？
+闪回缓冲区（flashback buffer）---->闪回日志（存放在闪回恢复区）
+                              rvwr
+
+如果开启闪回数据库?前提数据库要先开启归档
+startup mount
+alter database archivelog;
+alter database flashback on;
+
+语法：
+基于SCN 闪回：
+FLASHBACK [STANDBY] DATABASE [<database_name>] TO [BEFORE] SCN <system_change_number>
+基于时间戳闪回：
+FLASHBACK [STANDBY] DATABASE [<database_name>] TO [BEFORE] TIMESTMP <system_timestamp_value>
+基于时点闪回：
+FLASHBACK [STANDBY] DATABASE [<database_name>] TO [BEFORE] RESTORE POINT <restore_point_name>
+
+步骤：
+1、开启闪回数据库
+2、切换到mount
+3、闪回数据库操作
+4、alter database open resetlogs;
+
+注意：
+不能进行闪回数据库操作：
+1、控制文件被恢复或重新创建
+2、表空间被drop 掉
+3、数据文件被压缩
+
+结合导入导出工具实现数据不丢失
+
+作用:恢复整个数据库
+----------------------------------
+七、Flashback Data Archive
+是11G新特性
+
+Flashback Data Archive使用的是闪回归档区，Flashback Data Archive主要是针对单个表，可以长期的保存历史数据
+
+闪回归档区----->是创建在永久表空间中
+
+闪回归档区的大小？
+可以使用配额的方式来使用表空间
+
+启动闪回数据归档
+1、创建闪回数据归档区
+CREATE FLASHBACK ARCHIVE fla1 TABLESPACE tbs1 QUOTA 10G RETENTION 5 YEAR;
+2、对FLA1 归档中的表启用历史记录跟踪：
+ALTER TABLE inventory FLASHBACK ARCHIVE fla1;
+
+启用了闪回数据归档的表不能drop
+
+作用：对表实现闪回恢复
+------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
